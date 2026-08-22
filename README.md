@@ -6,7 +6,8 @@ Distance Correlation Analysis for Mixed-Type Variables
 pairwise **distance correlation coefficients** (Szekely et al., 2007) between
 variables of **mixed types** — continuous, binary/ternary nominal, and
 binary/ternary ordinal — with permutation-test p-values, designed for medical
-research datasets.
+research datasets. It also provides `plot_dcor_matrix()` for visualizing the
+result as a ggplot2 heatmap matrix.
 
 ## Features
 
@@ -20,6 +21,9 @@ research datasets.
 - Permutation test via `energy::dcor.test` (default R = 1000 replicates)
 - Significance markers: `***` (p < 0.001), `**` (p < 0.01), `*` (p < 0.05)
 - Returns a tidy long-format data frame (column var, row var, dcor, p, sig)
+- `plot_dcor_matrix()`: ggplot2 heatmap with correlation values, significance
+  stars, optional p-values, variable renaming and reordering, automatic
+  white/black text on dark/light tiles
 
 ## Installation
 
@@ -60,6 +64,30 @@ result2 <- compute_dcor_matrix(
 Output columns: `Column Variable`, `Row Variable`, `Distance Correlation`,
 `P Value`, `Significance`.
 
+### Plotting the matrix
+
+```r
+# Basic heatmap: tiles colored by dcor, values + significance stars annotated
+p <- plot_dcor_matrix(result, title = "Distance Correlation Matrix")
+print(p)
+
+# Show p-values instead of significance stars
+plot_dcor_matrix(result, show_significance = FALSE, show_p = TRUE)
+
+# Rename variables on the axes and hide the diagonal
+plot_dcor_matrix(result,
+                 labels = c(age = "Age (years)", bmi = "BMI (kg/m2)"),
+                 show_diag = FALSE)
+
+# Custom gradient colors and variable order
+plot_dcor_matrix(result,
+                 low = "white", high = "#D73027",
+                 var_order = c("age", "bmi", "sex", "stage", "blood"))
+```
+
+The function returns a standard ggplot object, so you can further customize it
+(e.g. `+ ggplot2::theme_minimal(14)`) or save it with `ggplot2::ggsave()`.
+
 ## Documentation
 
 A full technical document (in Chinese) covering the mathematical background,
@@ -69,7 +97,8 @@ encoding rationale, and permutation-test methodology is included:
 cat(system.file("doc", "technical_documentation.md", package = "dcorMix"))
 ```
 
-Function reference: `?compute_dcor_matrix` after installation.
+Function reference: `?compute_dcor_matrix` and `?plot_dcor_matrix` after
+installation.
 
 ## References
 

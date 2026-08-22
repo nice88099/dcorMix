@@ -1,8 +1,8 @@
 Package: dcorMix
 Type: Package
 Title: Pairwise Distance Correlation for Mixed-Type Variables
-Version: 1.0.0
-Date: 2026-08-22
+Version: 1.1.0
+Date: 2026-08-23
 Authors@R: person(given = "Surface",
               family = "User",
               role = c("aut", "cre"),
@@ -12,14 +12,16 @@ Description: Computes pairwise distance correlation coefficients with
     binary/ternary nominal, and binary/ternary ordinal variables. Applies
     type-specific encoding strategies (one-hot for nominal, integer encoding
     for ordinal, raw values for continuous) to ensure meaningful distance
-    metrics. Missing values are handled via pairwise deletion. Built on
-    the 'energy' package methodology by Szekely and Rizzo.
+    metrics. Missing values are handled via pairwise deletion. Provides a
+    ggplot2-based heatmap for visualizing the resulting distance correlation
+    matrix. Built on the 'energy' package methodology by Szekely and Rizzo.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Depends:
     R (>= 4.0.0)
 Imports:
     energy (>= 1.7-0),
+    ggplot2 (>= 3.4.0),
     stats
 LazyData: true
 RoxygenNote: 7.3.2

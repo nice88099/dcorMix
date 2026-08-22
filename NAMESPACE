@@ -3,3 +3,4 @@
 # so only the export directive is needed.
 
 export(compute_dcor_matrix)
+export(plot_dcor_matrix)
