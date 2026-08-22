@@ -1,0 +1,5 @@
+# Hand-written NAMESPACE (no roxygen2 dependency required)
+# All external functions are accessed via :: prefixes in the code,
+# so only the export directive is needed.
+
+export(compute_dcor_matrix)

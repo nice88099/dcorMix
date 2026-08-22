@@ -1,0 +1,15 @@
+.Rhistory
+.Rapp.history
+.RData
+.Ruserdata
+.Renviron
+*.tar.gz
+*.zip
+*.Rcheck/
+.Rproj/
+*.Rproj
+.Rproj.user/
+inst/doc/*.html
+vignettes/*.html
+vignettes/*.pdf
+.DS_Store
