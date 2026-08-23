@@ -235,7 +235,7 @@ compute_dcor_matrix <- function(data, var_types = NULL, R = 1000,
       y <- encoded_list[[j]]
 
       # ---- Pairwise deletion: keep only complete cases ----
-      complete_idx <- complete.cases(x, y)
+      complete_idx <- stats::complete.cases(x, y)
       x_complete <- x[complete_idx, , drop = FALSE]
       y_complete <- y[complete_idx, , drop = FALSE]
       n_complete <- sum(complete_idx)

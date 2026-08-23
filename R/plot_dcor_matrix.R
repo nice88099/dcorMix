@@ -38,6 +38,13 @@ utils::globalVariables(c("x_", "y_", "fill_", "label_text", "dark_text"))
 #'   \code{"cluster"} — hierarchical clustering on the distance
 #'   \code{1 - |dcor|}, so that strongly correlated variables are grouped
 #'   together and correlation blocks become visually apparent.
+#' @param triangle Character. Which part of the matrix to display:
+#'   \code{"full"} (default; the complete matrix with both triangles),
+#'   \code{"lower"} (lower-left triangle only), or \code{"upper"}
+#'   (upper-right triangle only). In \code{"lower"}/\code{"upper"} modes the
+#'   diagonal is included when \code{show_diag = TRUE}. Half-filled inputs
+#'   (only one orientation per pair) are handled automatically by mirroring
+#'   each pair onto the displayed side.
 #' @param show_values Logical. If TRUE (default), prints the distance
 #'   correlation coefficient in each tile.
 #' @param show_significance Logical. If TRUE (default), appends significance
@@ -78,6 +85,12 @@ utils::globalVariables(c("x_", "y_", "fill_", "label_text", "dark_text"))
 #' \code{include_diag = FALSE} was used in \code{compute_dcor_matrix()}) are
 #' shown in \code{na_fill} grey.
 #'
+#' When \code{triangle = "lower"} or \code{"upper"}, only the corresponding
+#' half of the matrix is drawn; each pair is placed on the displayed side
+#' regardless of its original (row, column) orientation in \code{data}. Use
+#' this for compact publication figures, e.g.
+#' \code{plot_dcor_matrix(result, triangle = "lower")}.
+#'
 #' When \code{var_order = "cluster"}, variables are ordered by hierarchical
 #' clustering (average linkage) on the distance \code{1 - |dcor|}. Missing
 #' pairwise dcors are imputed with the median observed dcor for the clustering
@@ -102,6 +115,9 @@ utils::globalVariables(c("x_", "y_", "fill_", "label_text", "dark_text"))
 #' plot_dcor_matrix(result, show_significance = FALSE, show_p = TRUE)
 #' # Rename axis variables
 #' plot_dcor_matrix(result, labels = c(age = "Age (years)", bmi = "BMI"))
+#' # Lower/upper triangle only
+#' plot_dcor_matrix(result, triangle = "lower")
+#' plot_dcor_matrix(result, triangle = "upper", show_diag = FALSE)
 #' }
 #'
 #' @export
@@ -109,6 +125,7 @@ plot_dcor_matrix <- function(data,
                              col_names = NULL,
                              labels = NULL,
                              var_order = c("asis", "alphabetical", "cluster"),
+                             triangle = c("full", "lower", "upper"),
                              show_values = TRUE,
                              show_significance = TRUE,
                              show_ns = FALSE,
@@ -129,6 +146,8 @@ plot_dcor_matrix <- function(data,
   if (!requireNamespace("ggplot2", quietly = TRUE)) {
     stop("The 'ggplot2' package is required. Install it with: install.packages('ggplot2')")
   }
+
+  triangle <- match.arg(triangle)
 
   data <- as.data.frame(data)
   if (nrow(data) == 0) {
@@ -214,6 +233,48 @@ plot_dcor_matrix <- function(data,
   df$x_ <- factor(df$x_, levels = vars)
   df$y_ <- factor(df$y_, levels = rev(vars))  # first variable at the top
 
+  # ---- 4b. Triangle control (full / lower / upper) ----
+  # Screen position: variable k is at x = k and y = n - k + 1, so a cell is
+  # in the visual upper-right triangle iff pos(col) > pos(row), and in the
+  # lower-left triangle iff pos(col) < pos(row).
+  if (triangle[1] != "full") {
+    pos_x <- match(as.character(df$x_), vars)
+    pos_y <- match(as.character(df$y_), vars)
+    known <- !is.na(pos_x) & !is.na(pos_y) & pos_x != pos_y
+
+    # Mirroring for half-filled inputs: if a pair only exists in the
+    # orientation opposite to the requested triangle, swap it onto the
+    # displayed side.
+    on_wrong_side <- if (triangle[1] == "upper") {
+      known & pos_x < pos_y
+    } else {
+      known & pos_x > pos_y
+    }
+    if (any(on_wrong_side)) {
+      tmp <- df$x_[on_wrong_side]
+      df$x_[on_wrong_side] <- df$y_[on_wrong_side]
+      df$y_[on_wrong_side] <- tmp
+      # refresh factors after swapping
+      df$x_ <- factor(as.character(df$x_), levels = vars)
+      df$y_ <- factor(as.character(df$y_), levels = rev(vars))
+      pos_x <- match(as.character(df$x_), vars)
+      pos_y <- match(as.character(df$y_), vars)
+    }
+
+    # Keep only the requested side (plus the diagonal, handled by show_diag)
+    keep <- if (triangle[1] == "upper") {
+      is.na(pos_x) | is.na(pos_y) | pos_x >= pos_y
+    } else {
+      is.na(pos_x) | is.na(pos_y) | pos_x <= pos_y
+    }
+    df <- df[keep, , drop = FALSE]
+
+    # After mirroring, a pair may exist in both orientations; drop duplicates
+    key <- paste(as.character(df$x_), as.character(df$y_), sep = "\r")
+    dup <- duplicated(key)
+    if (any(dup)) df <- df[!dup, , drop = FALSE]
+  }
+
   # ---- 5. Filter diagonal ----
   if (!show_diag) {
     keep <- as.character(df$x_) != as.character(df$y_)
@@ -250,6 +311,10 @@ plot_dcor_matrix <- function(data,
   # ---- 7. Assemble the ggplot ----
   p <- ggplot2::ggplot(df, ggplot2::aes(x = x_, y = y_, fill = fill_)) +
     ggplot2::geom_tile(color = "white", linewidth = 0.6) +
+    # drop = FALSE keeps all variable labels on both axes in triangle mode
+    # (otherwise variables that never appear on one side lose their tick)
+    ggplot2::scale_x_discrete(drop = FALSE) +
+    ggplot2::scale_y_discrete(drop = FALSE) +
     ggplot2::scale_fill_gradient(
       low = low, high = high, limits = fill_limits, na.value = na_fill,
       name = legend_name

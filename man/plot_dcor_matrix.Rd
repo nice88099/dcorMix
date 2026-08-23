@@ -10,7 +10,8 @@
 }
 \usage{
 plot_dcor_matrix(data, col_names = NULL, labels = NULL,
-  var_order = c("asis", "alphabetical", "cluster"), show_values = TRUE,
+  var_order = c("asis", "alphabetical", "cluster"),
+  triangle = c("full", "lower", "upper"), show_values = TRUE,
   show_significance = TRUE, show_ns = FALSE, show_p = FALSE,
   show_diag = TRUE, digits = 2, low = "#2166AC", high = "#B2182B",
   fill_limits = c(0, 1), na_fill = "grey90",
@@ -38,6 +39,13 @@ plot_dcor_matrix(data, col_names = NULL, labels = NULL,
     \code{"cluster"} — hierarchical clustering on the distance
     \code{1 - |dcor|}, so that strongly correlated variables are grouped
     together and correlation blocks become visually apparent.}
+  \item{triangle}{Character. Which part of the matrix to display:
+    \code{"full"} (default; the complete matrix with both triangles),
+    \code{"lower"} (lower-left triangle only), or \code{"upper"}
+    (upper-right triangle only). In \code{"lower"}/\code{"upper"} modes the
+    diagonal is included when \code{show_diag = TRUE}. Half-filled inputs
+    (only one orientation per pair) are handled automatically by mirroring
+    each pair onto the displayed side.}
   \item{show_values}{Logical. If TRUE (default), prints the distance
     correlation coefficient in each tile.}
   \item{show_significance}{Logical. If TRUE (default), appends significance
@@ -79,6 +87,12 @@ plot_dcor_matrix(data, col_names = NULL, labels = NULL,
   white on strongly-correlated (dark) tiles. Missing pairs (e.g. excluded
   when \code{include_diag = FALSE} was used in
   \code{compute_dcor_matrix()}) are shown in \code{na_fill} grey.
+
+  When \code{triangle = "lower"} or \code{"upper"}, only the corresponding
+  half of the matrix is drawn; each pair is placed on the displayed side
+  regardless of its original (row, column) orientation in \code{data}. Use
+  this for compact publication figures, e.g.
+  \code{plot_dcor_matrix(result, triangle = "lower")}.
 }
 \examples{
 \dontrun{
@@ -97,6 +111,8 @@ p <- plot_dcor_matrix(result, title = "Distance Correlation Matrix")
 print(p)
 plot_dcor_matrix(result, show_significance = FALSE, show_p = TRUE)
 plot_dcor_matrix(result, labels = c(age = "Age (years)", bmi = "BMI"))
+plot_dcor_matrix(result, triangle = "lower")
+plot_dcor_matrix(result, triangle = "upper", show_diag = FALSE)
 }
 }
 \seealso{

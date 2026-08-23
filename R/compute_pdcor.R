@@ -142,7 +142,7 @@ compute_pdcor <- function(data, x, y, z, var_types = NULL, R = 1000,
   names(encoded) <- all_vars
 
   # ---- 4. Listwise deletion across all involved variables ----
-  complete_idx <- Reduce(`&`, lapply(encoded, function(e) complete.cases(e)))
+  complete_idx <- Reduce(`&`, lapply(encoded, function(e) stats::complete.cases(e)))
   n_complete <- sum(complete_idx)
 
   if (n_complete < 10) {

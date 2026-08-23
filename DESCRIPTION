@@ -1,7 +1,7 @@
 Package: dcorMix
 Type: Package
 Title: Pairwise Distance Correlation for Mixed-Type Variables
-Version: 1.2.0
+Version: 1.3.0
 Date: 2026-08-23
 Authors@R: person(given = "Surface",
               family = "User",
