@@ -10,7 +10,7 @@
 }
 \usage{
 plot_dcor_matrix(data, col_names = NULL, labels = NULL,
-  var_order = c("asis", "alphabetical"), show_values = TRUE,
+  var_order = c("asis", "alphabetical", "cluster"), show_values = TRUE,
   show_significance = TRUE, show_ns = FALSE, show_p = FALSE,
   show_diag = TRUE, digits = 2, low = "#2166AC", high = "#B2182B",
   fill_limits = c(0, 1), na_fill = "grey90",
@@ -34,7 +34,10 @@ plot_dcor_matrix(data, col_names = NULL, labels = NULL,
     variables keep their original names.}
   \item{var_order}{Character vector of variable names defining the display
     order of rows/columns. Alternatively \code{"asis"} (default; order of
-    first appearance in the input) or \code{"alphabetical"}.}
+    first appearance in the input), \code{"alphabetical"}, or
+    \code{"cluster"} — hierarchical clustering on the distance
+    \code{1 - |dcor|}, so that strongly correlated variables are grouped
+    together and correlation blocks become visually apparent.}
   \item{show_values}{Logical. If TRUE (default), prints the distance
     correlation coefficient in each tile.}
   \item{show_significance}{Logical. If TRUE (default), appends significance

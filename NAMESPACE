@@ -4,3 +4,5 @@
 
 export(compute_dcor_matrix)
 export(plot_dcor_matrix)
+export(dcor_as_matrix)
+export(compute_pdcor)

@@ -34,7 +34,10 @@ utils::globalVariables(c("x_", "y_", "fill_", "label_text", "dark_text"))
 #'   variables keep their original names.
 #' @param var_order Character vector of variable names defining the display
 #'   order of rows/columns. Alternatively \code{"asis"} (default; order of
-#'   first appearance in the input) or \code{"alphabetical"}.
+#'   first appearance in the input), \code{"alphabetical"}, or
+#'   \code{"cluster"} — hierarchical clustering on the distance
+#'   \code{1 - |dcor|}, so that strongly correlated variables are grouped
+#'   together and correlation blocks become visually apparent.
 #' @param show_values Logical. If TRUE (default), prints the distance
 #'   correlation coefficient in each tile.
 #' @param show_significance Logical. If TRUE (default), appends significance
@@ -75,6 +78,11 @@ utils::globalVariables(c("x_", "y_", "fill_", "label_text", "dark_text"))
 #' \code{include_diag = FALSE} was used in \code{compute_dcor_matrix()}) are
 #' shown in \code{na_fill} grey.
 #'
+#' When \code{var_order = "cluster"}, variables are ordered by hierarchical
+#' clustering (average linkage) on the distance \code{1 - |dcor|}. Missing
+#' pairwise dcors are imputed with the median observed dcor for the clustering
+#' step only (they remain grey in the plot itself).
+#'
 #' @examples
 #' \dontrun{
 #' set.seed(42)
@@ -100,7 +108,7 @@ utils::globalVariables(c("x_", "y_", "fill_", "label_text", "dark_text"))
 plot_dcor_matrix <- function(data,
                              col_names = NULL,
                              labels = NULL,
-                             var_order = c("asis", "alphabetical"),
+                             var_order = c("asis", "alphabetical", "cluster"),
                              show_values = TRUE,
                              show_significance = TRUE,
                              show_ns = FALSE,
@@ -189,9 +197,13 @@ plot_dcor_matrix <- function(data,
 
   # ---- 4. Variable order ----
   if (is.character(var_order) &&
-      all(var_order %in% c("asis", "alphabetical"))) {
+      all(var_order %in% c("asis", "alphabetical", "cluster"))) {
     vars <- unique(c(df$x_, df$y_))
-    if (var_order[1] == "alphabetical") vars <- sort(vars)
+    if (var_order[1] == "alphabetical") {
+      vars <- sort(vars)
+    } else if (var_order[1] == "cluster") {
+      vars <- cluster_variable_order(df, vars)
+    }
   } else {
     vars <- var_order
     unknown <- setdiff(unique(c(df$x_, df$y_)), vars)
@@ -272,4 +284,53 @@ plot_dcor_matrix <- function(data,
   }
 
   p
+}
+
+
+# =============================================================================
+# Internal: cluster-based variable ordering
+# =============================================================================
+
+#' Order Variables by Hierarchical Clustering of dcors
+#'
+#' Builds a symmetric dcor matrix from the (possibly half-filled) long-format
+#' pairs, converts to the distance 1 - |dcor|, and returns variables ordered
+#' by average-linkage hierarchical clustering. Missing dcors are imputed with
+#' the median observed dcor for the clustering step only.
+#'
+#' @param df Data frame with columns x_, y_, fill_ (standardized by the
+#'   caller).
+#' @param vars Character vector of all variable names.
+#' @return Character vector of variable names in clustered order.
+#' @noRd
+cluster_variable_order <- function(df, vars) {
+  n <- length(vars)
+  if (n < 3) return(vars)  # nothing to cluster
+
+  m <- matrix(NA_real_, nrow = n, ncol = n,
+              dimnames = list(vars, vars))
+
+  for (k in seq_len(nrow(df))) {
+    xi <- df$x_[k]; yi <- df$y_[k]; vi <- df$fill_[k]
+    if (is.na(vi)) next
+    m[yi, xi] <- vi
+    m[xi, yi] <- vi
+  }
+
+  # Impute missing pairwise dcors with the median observed value
+  offdiag <- m[upper.tri(m)]
+  fill_val <- if (all(is.na(offdiag))) 0 else stats::median(offdiag, na.rm = TRUE)
+  m[is.na(m)] <- fill_val
+  diag(m) <- 1
+
+  # Distance between variables: 1 - |dcor|
+  d <- stats::as.dist(1 - abs(m))
+
+  hc <- tryCatch(
+    stats::hclust(d, method = "average"),
+    error = function(e) NULL
+  )
+  if (is.null(hc)) return(vars)
+
+  vars[hc$order]
 }

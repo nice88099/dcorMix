@@ -3,6 +3,7 @@
 \title{Compute Pairwise Distance Correlation Matrix with Permutation Tests}
 \usage{
 compute_dcor_matrix(data, var_types = NULL, R = 1000,
+                    p_adjust = "none",
                     verbose = TRUE, include_diag = TRUE)
 }
 \arguments{
@@ -14,7 +15,21 @@ types. Supported types: \code{"continuous"}, \code{"binary_nominal"},
 \code{"ternary_ordinal"}, \code{"nominal"}, \code{"ordinal"}.
 If \code{NULL} (default), types are auto-detected.}
 
-\item{R}{Integer. Number of permutations for the test (default: 1000).}
+\item{R}{Integer. Number of permutations for the test (default: 1000).
+Set \code{R = 0} to use the fast asymptotic t-test
+(\code{energy::dcorT.test}, based on the bias-corrected dcorT) instead
+of the permutation test — recommended for large samples (n > 200),
+where results are nearly identical but computation is orders of
+magnitude faster.}
+
+\item{p_adjust}{Character. P-value adjustment method for multiple
+comparisons (default: \code{"none"}). Any method supported by
+\code{stats::p.adjust} may be used, e.g. \code{"BH"}
+(Benjamini-Hochberg FDR), \code{"bonferroni"}, \code{"holm"},
+\code{"hochberg"}, \code{"BY"}. When not \code{"none"}, two extra
+columns are appended: \code{Adjusted P Value} and
+\code{Adjusted Significance}. Adjustment is applied over the unique
+variable pairs (upper triangle) only.}
 
 \item{verbose}{Logical. If \code{TRUE}, prints progress messages
 (default: \code{TRUE}).}
@@ -23,14 +38,21 @@ If \code{NULL} (default), types are auto-detected.}
 (diagonal, dcor = 1) in the output (default: \code{TRUE}).}
 }
 \value{
-A data frame in long format with 5 columns:
+A data frame in long format with 6 columns (8 when
+\code{p_adjust != "none"}):
 \item{Column Variable}{Name of the column variable}
 \item{Row Variable}{Name of the row variable}
 \item{Distance Correlation}{Distance correlation coefficient (0 to 1)}
-\item{P Value}{Permutation test p-value}
+\item{P Value}{Permutation test p-value (raw)}
 \item{Significance}{Significance marker: \code{"***"} (p < 0.001),
 \code{"**"} (p < 0.01), \code{"*"} (p < 0.05), \code{"ns"}
 (not significant), or \code{"-"} (self-pair or not computable)}
+\item{N Pair}{Number of complete observations used for this pair
+(after pairwise deletion)}
+\item{Adjusted P Value}{Multiple-comparison-adjusted p-value (only when
+\code{p_adjust != "none"})}
+\item{Adjusted Significance}{Significance marker based on the adjusted
+p-value (only when \code{p_adjust != "none"})}
 }
 \description{
 Calculates pairwise distance correlation coefficients and their
@@ -53,11 +75,24 @@ non-adjacent)
 
 \strong{Missing values} are handled by pairwise deletion: for each pair
 of variables, only observations with complete (non-missing) data for
-both variables are used in the computation.
+both variables are used in the computation. The actual number of
+observations used is reported in the \code{N Pair} column for full
+transparency.
 
-\strong{Statistical inference} uses \code{energy::dcor.test} with R
-permutations. If \code{dcor.test} is not available in the installed
-version, the function falls back to \code{energy::dcov.test}.
+\strong{Statistical inference}:
+\itemize{
+\item \code{R > 0} (default): permutation test via
+\code{energy::dcor.test} with R permutations. If \code{dcor.test} is
+not available in the installed version, the function falls back to
+\code{energy::dcov.test}.
+\item \code{R = 0}: asymptotic t-test via \code{energy::dcorT.test}
+(bias-corrected dcorT), which is much faster for large samples.
+}
+
+\strong{Multiple comparisons}: when \code{p_adjust} is set, p-values are
+adjusted across the unique variable pairs (upper triangle) only, so each
+pair is counted once. Raw p-values remain available in the
+\code{P Value} column alongside the adjusted values.
 
 \strong{Auto-detection rules} (when \code{var_types = NULL}):
 ordered factors are classified as ordinal; unordered factors as nominal;

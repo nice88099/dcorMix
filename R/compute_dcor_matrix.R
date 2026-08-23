@@ -22,17 +22,34 @@
 #'   "ternary_nominal", "ternary_ordinal", "nominal", "ordinal".
 #'   If NULL (default), types are auto-detected.
 #' @param R Integer. Number of permutations for the test (default: 1000).
+#'   Set \code{R = 0} to use the fast asymptotic t-test
+#'   (\code{energy::dcorT.test}, based on the bias-corrected dcorT) instead
+#'   of the permutation test — recommended for large samples (n > 200),
+#'   where results are nearly identical but computation is orders of
+#'   magnitude faster.
+#' @param p_adjust Character. P-value adjustment method for multiple
+#'   comparisons (default: "none", no adjustment). Any method supported by
+#'   \code{stats::p.adjust} may be used, e.g. "BH" (Benjamini-Hochberg FDR),
+#'   "bonferroni", "holm", "hochberg", "BY". When not "none", two extra
+#'   columns are appended: \code{Adjusted P Value} and
+#'   \code{Adjusted Significance}. Adjustment is applied over the unique
+#'   variable pairs (upper triangle) only.
 #' @param verbose Logical. If TRUE, prints progress messages (default: TRUE).
 #' @param include_diag Logical. If TRUE, includes self-pairs (diagonal,
 #'   dcor = 1) in the output (default: TRUE).
 #'
-#' @return A data frame in long format with 5 columns:
+#' @return A data frame in long format with 6 columns (8 when
+#'   \code{p_adjust != "none"}):
 #'   \itemize{
 #'     \item \code{Column Variable} - Name of the column variable
 #'     \item \code{Row Variable} - Name of the row variable
 #'     \item \code{Distance Correlation} - Distance correlation coefficient
-#'     \item \code{P Value} - Permutation test p-value
-#'     \item \code{Significance} - Significance marker
+#'     \item \code{P Value} - Permutation test p-value (raw)
+#'     \item \code{Significance} - Significance marker (based on raw p)
+#'     \item \code{N Pair} - Number of complete observations used for this
+#'       pair (after pairwise deletion)
+#'     \item \code{Adjusted P Value} - (only if \code{p_adjust != "none"})
+#'     \item \code{Adjusted Significance} - (only if \code{p_adjust != "none"})
 #'   }
 #'
 #' @details
@@ -47,9 +64,16 @@
 #'
 #' Missing values are handled by pairwise deletion: for each pair of variables,
 #' only observations with complete (non-missing) data for both variables are
-#' used in the computation.
+#' used in the computation. The actual number of observations used is reported
+#' in the \code{N Pair} column for full transparency.
 #'
-#' The permutation test uses \code{energy::dcor.test} with R permutations.
+#' Hypothesis testing:
+#' \itemize{
+#'   \item \code{R > 0} (default): permutation test via
+#'     \code{energy::dcor.test} with R permutations
+#'   \item \code{R = 0}: asymptotic t-test via \code{energy::dcorT.test}
+#'     (bias-corrected dcorT), which is much faster for large samples
+#' }
 #' If \code{dcor.test} is not available in the installed version, the function
 #' falls back to \code{energy::dcov.test}.
 #'
@@ -89,6 +113,7 @@
 #'
 #' @export
 compute_dcor_matrix <- function(data, var_types = NULL, R = 1000,
+                                p_adjust = "none",
                                 verbose = TRUE, include_diag = TRUE) {
 
   # ---- 1. Input validation ----
@@ -102,6 +127,21 @@ compute_dcor_matrix <- function(data, var_types = NULL, R = 1000,
 
   if (n_vars < 2) {
     stop("At least two variables are required.")
+  }
+
+  # Validate p_adjust early (fail fast)
+  if (!is.character(p_adjust) || length(p_adjust) != 1) {
+    stop("'p_adjust' must be a single character string.")
+  }
+  if (!p_adjust %in% c("none", stats::p.adjust.methods)) {
+    stop(sprintf("Invalid p_adjust '%s'. Use 'none' or one of: %s",
+                 p_adjust, paste(stats::p.adjust.methods, collapse = ", ")))
+  }
+
+  test_label <- if (R > 0) {
+    sprintf("%d permutations", R)
+  } else {
+    "asymptotic t-test"
   }
 
   # ---- 2. Detect or use provided variable types ----
@@ -159,14 +199,16 @@ compute_dcor_matrix <- function(data, var_types = NULL, R = 1000,
   n_pairs_upper <- n_vars * (n_vars - 1) / 2
 
   if (verbose) {
-    message(sprintf("Computing %d unique pairs (R = %d permutations each)...\n",
-                    n_pairs_upper, R))
+    message(sprintf("Computing %d unique pairs (%s each)...\n",
+                    n_pairs_upper, test_label))
   }
 
   dcor_matrix <- matrix(NA_real_, nrow = n_vars, ncol = n_vars,
                         dimnames = list(var_names, var_names))
   pval_matrix <- matrix(NA_real_, nrow = n_vars, ncol = n_vars,
                         dimnames = list(var_names, var_names))
+  npair_matrix <- matrix(NA_integer_, nrow = n_vars, ncol = n_vars,
+                         dimnames = list(var_names, var_names))
 
   pair_count <- 0
 
@@ -253,30 +295,56 @@ compute_dcor_matrix <- function(data, var_types = NULL, R = 1000,
         if (is.na(result) || is.nan(result)) NA_real_ else result
       })
 
-      # ---- Compute permutation test p-value (energy::dcor.test) ----
+      # ---- Compute hypothesis test ----
+      # R > 0: permutation test (dcor.test)
+      # R = 0: asymptotic t-test (dcorT.test on bias-corrected dcor)
+      #        — much faster for large samples
       p_val <- NA_real_
       if (!is.na(dcor_val)) {
         test_result <- tryCatch({
-          # Primary: dcor.test
-          energy::dcor.test(x_mat, y_mat, R = R)
+          if (R > 0) {
+            energy::dcor.test(x_mat, y_mat, R = R)
+          } else {
+            energy::dcorT.test(x_mat, y_mat)
+          }
         }, error = function(e1) {
-          # Fallback: dcov.test (older versions of energy)
-          tryCatch({
-            energy::dcov.test(x_mat, y_mat, R = R)
-          }, error = function(e2) {
+          # Fallback for R > 0: dcov.test (older versions of energy)
+          if (R > 0) {
+            tryCatch({
+              energy::dcov.test(x_mat, y_mat, R = R)
+            }, error = function(e2) {
+              if (verbose) {
+                message(sprintf("      -> Error in hypothesis test for %s vs %s: %s",
+                                var_names[i], var_names[j], e2$message))
+              }
+              NULL
+            })
+          } else {
             if (verbose) {
-              message(sprintf("      -> Error in permutation test for %s vs %s: %s",
-                              var_names[i], var_names[j], e2$message))
+              message(sprintf("      -> Error in asymptotic test for %s vs %s: %s",
+                              var_names[i], var_names[j], e1$message))
             }
             NULL
-          })
+          }
         }, warning = function(w) {
           # Retry suppressing warnings
           tryCatch(
-            suppressWarnings(energy::dcor.test(x_mat, y_mat, R = R)),
+            {
+              if (R > 0) {
+                suppressWarnings(energy::dcor.test(x_mat, y_mat, R = R))
+              } else {
+                suppressWarnings(energy::dcorT.test(x_mat, y_mat))
+              }
+            },
             error = function(e) {
               tryCatch(
-                suppressWarnings(energy::dcov.test(x_mat, y_mat, R = R)),
+                {
+                  if (R > 0) {
+                    suppressWarnings(energy::dcov.test(x_mat, y_mat, R = R))
+                  } else {
+                    suppressWarnings(energy::dcorT.test(x_mat, y_mat))
+                  }
+                },
                 error = function(e2) NULL
               )
             }
@@ -288,15 +356,36 @@ compute_dcor_matrix <- function(data, var_types = NULL, R = 1000,
         }
       }
 
-      # ---- Store symmetric results ----
+      # ---- Store symmetric results (dcor, p, and pair sample size) ----
       dcor_matrix[i, j] <- dcor_val
       dcor_matrix[j, i] <- dcor_val
       pval_matrix[i, j] <- p_val
       pval_matrix[j, i] <- p_val
+      npair_matrix[i, j] <- n_complete
+      npair_matrix[j, i] <- n_complete
     }
   }
 
-  # ---- 6. Assemble long-format result ----
+  # ---- 6. Adjust p-values for multiple comparisons (optional) ----
+  # Raw p-values are preserved in 'P Value'; adjusted values go to a
+  # separate matrix so both can be reported side by side.
+  adj_pval_matrix <- NULL
+  if (p_adjust != "none") {
+    # Adjust over unique pairs only (upper triangle, non-NA), then mirror.
+    # This avoids counting each pair twice (i != j and j != i rows).
+    adj_pval_matrix <- pval_matrix
+    ut <- upper.tri(adj_pval_matrix)
+    idx_pairs <- which(ut & !is.na(adj_pval_matrix))
+    if (length(idx_pairs) > 0) {
+      adj_pval_matrix[idx_pairs] <- stats::p.adjust(adj_pval_matrix[idx_pairs],
+                                                    method = p_adjust)
+      # Mirror adjusted values to the lower triangle
+      adj_pval_matrix[lower.tri(adj_pval_matrix)] <-
+        t(adj_pval_matrix)[lower.tri(adj_pval_matrix)]
+    }
+  }
+
+  # ---- 7. Assemble long-format result ----
   result_list <- list()
   idx <- 1
 
@@ -308,29 +397,60 @@ compute_dcor_matrix <- function(data, var_types = NULL, R = 1000,
       dcor_val <- dcor_matrix[i, j]
       p_val <- pval_matrix[i, j]
       sig <- get_significance(p_val, is_self = (i == j))
+      n_pair_val <- if (i == j) NA_integer_ else npair_matrix[i, j]
 
-      result_list[[idx]] <- data.frame(
-        col_variable  = var_names[j],
-        row_variable   = var_names[i],
-        dcor           = dcor_val,
-        p_value        = p_val,
-        significance   = sig,
-        stringsAsFactors = FALSE
-      )
+      if (!is.null(adj_pval_matrix)) {
+        adj_p_val <- adj_pval_matrix[i, j]
+        result_list[[idx]] <- data.frame(
+          col_variable  = var_names[j],
+          row_variable  = var_names[i],
+          dcor          = dcor_val,
+          p_value       = p_val,
+          significance  = sig,
+          n_pair        = n_pair_val,
+          adj_p_value   = adj_p_val,
+          adj_signif    = get_significance(adj_p_val, is_self = (i == j)),
+          stringsAsFactors = FALSE
+        )
+      } else {
+        result_list[[idx]] <- data.frame(
+          col_variable  = var_names[j],
+          row_variable  = var_names[i],
+          dcor          = dcor_val,
+          p_value       = p_val,
+          significance  = sig,
+          n_pair        = n_pair_val,
+          stringsAsFactors = FALSE
+        )
+      }
       idx <- idx + 1
     }
   }
 
   result_df <- do.call(rbind, result_list)
 
-  # ---- 7. Set professional English column names ----
-  colnames(result_df) <- c(
-    "Column Variable",
-    "Row Variable",
-    "Distance Correlation",
-    "P Value",
-    "Significance"
-  )
+  # ---- 8. Set professional English column names ----
+  if (!is.null(adj_pval_matrix)) {
+    colnames(result_df) <- c(
+      "Column Variable",
+      "Row Variable",
+      "Distance Correlation",
+      "P Value",
+      "Significance",
+      "N Pair",
+      "Adjusted P Value",
+      "Adjusted Significance"
+    )
+  } else {
+    colnames(result_df) <- c(
+      "Column Variable",
+      "Row Variable",
+      "Distance Correlation",
+      "P Value",
+      "Significance",
+      "N Pair"
+    )
+  }
 
   if (verbose) {
     message("\n========== Computation Complete ==========")
@@ -341,6 +461,13 @@ compute_dcor_matrix <- function(data, var_types = NULL, R = 1000,
     message(sprintf("  Total pairs in output : %d", n_total))
     message(sprintf("  Significant pairs      : %d", n_sig))
     message(sprintf("  Non-computable pairs   : %d", n_na))
+    if (!is.null(adj_pval_matrix)) {
+      n_sig_adj <- sum(result_df$`Adjusted Significance` %in%
+                         c("***", "**", "*"), na.rm = TRUE)
+      message(sprintf("  Significant (adjusted) : %d  [%s]",
+                      n_sig_adj, p_adjust))
+    }
+    message(sprintf("  Test type              : %s", test_label))
     message("==========================================\n")
   }
 
